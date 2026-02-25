@@ -114,12 +114,12 @@ const assets = { bg: new Image(), stone: [], plant: [], fish: [] };
 const selectedVariety = { stone: 0, plant: 0, fish: 0 };
 
 // --- IMAGE LOADING LOGIC ---
-assets.bg.src = "{{ url_for('static', filename='images/bgperfect.jpg') }}";
+assets.bg.src = 'static/images/bgperfect.jpg';
 
 for (let type in counts) {
     for (let i = 1; i <= counts[type]; i++) {
         const img = new Image();
-        img.src = `/static/images/${type}${i}.png`; 
+        img.src = `static/images/${type}${i}.png`; 
         assets[type].push(img);
     }
 }
