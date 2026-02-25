@@ -104,32 +104,40 @@ let coins = 50;
 let currentTool = 'select';
 let entities = [];
 let floatingTexts = [];
+let particles = []; 
+let selectedEntity = null;
+let isDragging = false;
 let timeOfDay = 0;
 
 const counts = { stone: 3, plant: 2, fish: 2 }; 
 const assets = { bg: new Image(), stone: [], plant: [], fish: [] };
 const selectedVariety = { stone: 0, plant: 0, fish: 0 };
 
-// --- IMPROVED IMAGE LOADING ---
-// Use relative paths that work on both local Flask and Vercel
-assets.bg.src = "/static/images/bgperfect.jpg";
+// --- IMAGE LOADING LOGIC ---
+assets.bg.src = "{{ url_for('static', filename='images/bgperfect.jpg') }}";
 
 for (let type in counts) {
     for (let i = 1; i <= counts[type]; i++) {
         const img = new Image();
         img.src = `/static/images/${type}${i}.png`; 
-        img.onerror = () => console.error(`Missing: /static/images/${type}${i}.png - Check if filename is lowercase!`);
         assets[type].push(img);
     }
 }
 
+// --- FLASK NAVIGATION & PERSISTENCE ---
 function startMiniGame() {
     localStorage.setItem('pond_bread', breadStock);
     window.location.href = "/hunt"; 
 }
 
+// Update bread count when returning from the hunt
+window.addEventListener('focus', () => {
+    breadStock = parseInt(localStorage.getItem('pond_bread')) || 0;
+    document.getElementById('bread-stock').innerText = breadStock;
+});
+
 function clearPond() {
-    entities = []; floatingTexts = []; 
+    entities = []; particles = []; floatingTexts = []; 
     sizeControl.style.display = 'none';
 }
 
@@ -146,6 +154,7 @@ class Entity {
 
         this.timer = Math.random() * 100;
         this.hatchTimer = 0; 
+        this.isHunting = false;
     }
 
     update() {
@@ -168,6 +177,7 @@ class Entity {
         if (this.type === 'fish') {
             let food = entities.find(e => e.type === 'dropping');
             if (food) {
+                this.isHunting = true;
                 let dx = food.x - this.x; let dy = food.y - this.y;
                 let dist = Math.hypot(dx, dy);
                 this.x += (dx/dist)*2.5; this.y += (dy/dist)*2.5;
@@ -177,6 +187,7 @@ class Entity {
                     this.size = Math.min(this.size + 0.02, 0.3);
                 }
             } else {
+                this.isHunting = false;
                 this.x += this.dirX * 1.2;
                 this.y += Math.sin(this.timer * 0.5) * 0.5;
                 if (this.x < -50 || this.x > canvas.width + 50) this.dirX *= -1;
@@ -216,9 +227,6 @@ class Entity {
         ctx.restore();
     }
 }
-
-let selectedEntity = null;
-let isDragging = false;
 
 function setTool(tool) {
     if (currentTool === tool && counts[tool]) {

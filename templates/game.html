@@ -88,7 +88,7 @@ function playTone(freq, type, duration, volume = 0.1) {
 let active = true;
 let score = 0;
 let lives = 3;
-let difficulty = 1.2; // Slightly faster start for mobile excitement
+let difficulty = 1.2; 
 let lastTime = 0;
 let spawnTimer = 0;
 
@@ -106,7 +106,7 @@ let particles = [];
 function init() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    player.y = canvas.height - 120; // Positioned higher to clear bottom navigation bars
+    player.y = canvas.height - 120; 
     player.size = Math.min(canvas.width * 0.14, 55);
     requestAnimationFrame(mainLoop);
 }
@@ -115,7 +115,6 @@ function createEntity() {
     const rand = Math.random();
     let type, char, speed;
     
-    // Increased Hazard Probability for mobile
     if (rand < 0.25) { type = 'hazard'; char = '⚓'; speed = 4.5; }
     else if (rand < 0.40) { type = 'hazard'; char = '🛍️'; speed = 2.8; }
     else if (rand < 0.45) { type = 'bonus'; char = '⚪'; speed = 5.5; }
@@ -123,7 +122,6 @@ function createEntity() {
 
     const entSize = Math.min(canvas.width * 0.1, 40);
     const ent = {
-        // Ensure they spawn well within screen edges
         x: Math.random() * (canvas.width - 60) + 30,
         y: -60,
         char: char,
@@ -156,7 +154,6 @@ function mainLoop(time) {
     player.x += (player.targetX - player.x) * player.lerp;
     
     spawnTimer += dt;
-    // Faster spawning for mobile (900ms vs 1100ms)
     if (spawnTimer > (900 / difficulty)) {
         createEntity();
         spawnTimer = 0;
@@ -165,7 +162,6 @@ function mainLoop(time) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Particles logic
     particles.forEach((p, i) => {
         p.x += p.vx; p.y += p.vy; p.a -= 0.04;
         ctx.globalAlpha = p.a;
@@ -181,7 +177,6 @@ function mainLoop(time) {
         e.x += e.vx;
         e.rot += e.rotV;
 
-        // Bounce bags off walls
         if (e.x < 20 || e.x > canvas.width - 20) e.vx *= -1;
 
         ctx.font = `${e.size}px Arial`;
@@ -192,7 +187,6 @@ function mainLoop(time) {
         ctx.restore();
 
         const dist = Math.hypot(e.x - player.x, e.y - player.y);
-        // Tighter collision for elite feel
         if (dist < (player.size * 0.7)) {
             if (e.type === 'food') {
                 score++; 
@@ -231,15 +225,19 @@ function mainLoop(time) {
     requestAnimationFrame(mainLoop);
 }
 
+// FLASK & POND CONNECTION LOGIC
 function finishGame() {
+    // 1. Retrieve the existing bread stock from browser memory
     const currentStock = parseInt(localStorage.getItem('pond_bread')) || 0;
+    
+    // 2. Save the NEW total (old stock + new hunt score)
     localStorage.setItem('pond_bread', currentStock + score);
+    
+    // 3. Return to the main Pond Sandbox page
     window.location.href = "/";
 }
 
-// Fixed Mobile Controls
 const updateTarget = (clientX) => {
-    // Keep fish within screen bounds
     player.targetX = Math.max(30, Math.min(window.innerWidth - 30, clientX));
 };
 
