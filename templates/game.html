@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Pond Sandbox - Elite Hunt</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --ui-bg: rgba(15, 23, 42, 0.9);
+        }
+
+        body { 
+            margin: 0; overflow: hidden; background: var(--bg); 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            touch-action: none; overscroll-behavior: none; color: white;
+            user-select: none; -webkit-user-select: none;
+        }
+
+        canvas { display: block; }
+
+        #game-ui {
+            position: absolute; top: env(safe-area-inset-top, 20px); width: 100%;
+            display: flex; justify-content: center; gap: 15px;
+            pointer-events: none; z-index: 10;
+        }
+
+        .stat {
+            background: var(--ui-bg); padding: 10px 18px; border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1); font-weight: bold; font-size: 1rem;
+            backdrop-filter: blur(5px);
+        }
+
+        #game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 30px; border-radius: 24px;
+            text-align: center; color: #1e293b; display: none; z-index: 100;
+            width: 85%; max-width: 320px; box-shadow: 0 10px 50px rgba(0,0,0,0.5);
+        }
+
+        button { 
+            width: 100%; padding: 16px; background: var(--success); color: white; 
+            border: none; border-radius: 12px; cursor: pointer; font-weight: bold;
+            font-size: 1.1rem; margin-top: 15px; -webkit-tap-highlight-color: transparent;
+        }
+
+        .flash { animation: flashAnim 0.2s; }
+        @keyframes flashAnim { 50% { background: #450a0a; } }
+    </style>
+</head>
+<body>
+
+    <div id="game-ui">
+        <div class="stat">🍞 <span id="ui-score">0</span></div>
+        <div class="stat">❤️ <span id="ui-lives">3</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="game-over">
+        <h2 style="margin:0 0 10px 0">Hunt Over</h2>
+        <p>You collected <strong id="final-score">0</strong> bread!</p>
+        <button onclick="finishGame()">Deposit & Return</button>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let audioCtx = null;
+function playTone(freq, type, duration, volume = 0.1) {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+}
+
+let active = true;
+let score = 0;
+let lives = 3;
+let difficulty = 1.2; // Slightly faster start for mobile excitement
+let lastTime = 0;
+let spawnTimer = 0;
+
+const player = {
+    x: window.innerWidth / 2,
+    y: 0,
+    targetX: window.innerWidth / 2,
+    lerp: 0.25,
+    size: 50
+};
+
+let entities = []; 
+let particles = [];
+
+function init() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    player.y = canvas.height - 120; // Positioned higher to clear bottom navigation bars
+    player.size = Math.min(canvas.width * 0.14, 55);
+    requestAnimationFrame(mainLoop);
+}
+
+function createEntity() {
+    const rand = Math.random();
+    let type, char, speed;
+    
+    // Increased Hazard Probability for mobile
+    if (rand < 0.25) { type = 'hazard'; char = '⚓'; speed = 4.5; }
+    else if (rand < 0.40) { type = 'hazard'; char = '🛍️'; speed = 2.8; }
+    else if (rand < 0.45) { type = 'bonus'; char = '⚪'; speed = 5.5; }
+    else { type = 'food'; char = '🍞'; speed = 3.2; }
+
+    const entSize = Math.min(canvas.width * 0.1, 40);
+    const ent = {
+        // Ensure they spawn well within screen edges
+        x: Math.random() * (canvas.width - 60) + 30,
+        y: -60,
+        char: char,
+        type: type,
+        speed: speed * difficulty,
+        vx: char === '🛍️' ? (Math.random() > 0.5 ? 2.5 : -2.5) : 0,
+        rot: 0,
+        rotV: (Math.random() - 0.5) * 0.15,
+        size: entSize
+    };
+    entities.push(ent);
+}
+
+function spawnParticles(x, y, color) {
+    for(let i=0; i<6; i++) {
+        particles.push({
+            x, y, color,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            a: 1
+        });
+    }
+}
+
+function mainLoop(time) {
+    if (!active) return;
+    const dt = time - lastTime;
+    lastTime = time;
+
+    player.x += (player.targetX - player.x) * player.lerp;
+    
+    spawnTimer += dt;
+    // Faster spawning for mobile (900ms vs 1100ms)
+    if (spawnTimer > (900 / difficulty)) {
+        createEntity();
+        spawnTimer = 0;
+        difficulty += 0.008; 
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Particles logic
+    particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; p.a -= 0.04;
+        ctx.globalAlpha = p.a;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 3, 3);
+        if (p.a <= 0) particles.splice(i, 1);
+    });
+    ctx.globalAlpha = 1;
+
+    for (let i = entities.length - 1; i >= 0; i--) {
+        const e = entities[i];
+        e.y += e.speed;
+        e.x += e.vx;
+        e.rot += e.rotV;
+
+        // Bounce bags off walls
+        if (e.x < 20 || e.x > canvas.width - 20) e.vx *= -1;
+
+        ctx.font = `${e.size}px Arial`;
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(e.rot);
+        ctx.fillText(e.char, -e.size/2, e.size/2);
+        ctx.restore();
+
+        const dist = Math.hypot(e.x - player.x, e.y - player.y);
+        // Tighter collision for elite feel
+        if (dist < (player.size * 0.7)) {
+            if (e.type === 'food') {
+                score++; 
+                playTone(600, 'sine', 0.1); 
+                spawnParticles(e.x, e.y, '#fbbf24');
+            } else if (e.type === 'bonus') {
+                score += 5; 
+                playTone(880, 'triangle', 0.2); 
+                spawnParticles(e.x, e.y, '#fff');
+            } else {
+                lives--; 
+                if (navigator.vibrate) navigator.vibrate(60);
+                playTone(150, 'sawtooth', 0.3, 0.2); 
+                spawnParticles(e.x, e.y, '#ef4444');
+                document.body.classList.add('flash');
+                setTimeout(() => document.body.classList.remove('flash'), 200);
+            }
+            entities.splice(i, 1);
+        } else if (e.y > canvas.height + 100) {
+            entities.splice(i, 1);
+        }
+    }
+
+    ctx.font = `${player.size}px Arial`;
+    ctx.textAlign = "center";
+    ctx.fillText("🐟", player.x, player.y + (player.size/3));
+
+    document.getElementById('ui-score').innerText = score;
+    document.getElementById('ui-lives').innerText = Math.max(0, lives);
+
+    if (lives <= 0) {
+        active = false;
+        document.getElementById('game-over').style.display = 'block';
+        document.getElementById('final-score').innerText = score;
+    }
+    requestAnimationFrame(mainLoop);
+}
+
+function finishGame() {
+    const currentStock = parseInt(localStorage.getItem('pond_bread')) || 0;
+    localStorage.setItem('pond_bread', currentStock + score);
+    window.location.href = "/";
+}
+
+// Fixed Mobile Controls
+const updateTarget = (clientX) => {
+    // Keep fish within screen bounds
+    player.targetX = Math.max(30, Math.min(window.innerWidth - 30, clientX));
+};
+
+window.addEventListener('touchstart', e => {
+    updateTarget(e.touches[0].clientX);
+}, { passive: false });
+
+window.addEventListener('touchmove', e => {
+    updateTarget(e.touches[0].clientX);
+    e.preventDefault();
+}, { passive: false });
+
+window.addEventListener('mousemove', e => { updateTarget(e.clientX); });
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    player.y = canvas.height - 120;
+    player.size = Math.min(canvas.width * 0.14, 55);
+});
+
+init();
+</script>
+</body>
+</html>
